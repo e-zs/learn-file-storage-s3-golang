@@ -2,7 +2,7 @@ package main
 
 import (
 	"crypto/rand"
-	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"mime"
 	"os"
@@ -34,11 +34,11 @@ func getAssetPath(contentType string) (string, error) {
 }
 
 func randomFilename() (string, error) {
-	key := make([]byte, 32)
+	key := make([]byte, 16)
 	if _, err := rand.Read(key); err != nil {
 		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(key), nil
+	return hex.EncodeToString(key), nil
 }
 
 func (cfg apiConfig) getAssetDiskPath(assetPath string) string {
@@ -47,4 +47,8 @@ func (cfg apiConfig) getAssetDiskPath(assetPath string) string {
 
 func (cfg apiConfig) getAssetURL(assetPath string) string {
 	return fmt.Sprintf("http://localhost:%v/assets/%v", cfg.port, assetPath)
+}
+
+func (cfg apiConfig) getAssetAWSURL(assetKey string) string {
+	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, assetKey)
 }
