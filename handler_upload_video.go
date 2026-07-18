@@ -20,49 +20,49 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Couldn't find JWT", err)
+		respondWithError(w, http.StatusUnauthorized, "Couldn't find JWT: %w", err)
 		return
 	}
 
 	userID, err := auth.ValidateJWT(token, cfg.jwtSecret)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Couldn't validate JWT", err)
+		respondWithError(w, http.StatusUnauthorized, "Couldn't validate JWT: %w", err)
 		return
 	}
 
 	videoIDString := r.PathValue("videoID")
 	videoID, err := uuid.Parse(videoIDString)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid ID", err)
+		respondWithError(w, http.StatusBadRequest, "Invalid IDL: %w", err)
 		return
 	}
 
 	dbVideo, err := cfg.db.GetVideo(videoID)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "could not find video", err)
+		respondWithError(w, http.StatusInternalServerError, "could not find video: %w", err)
 		return
 	}
 	if dbVideo.UserID != userID {
-		respondWithError(w, http.StatusUnauthorized, "no authorized to update video", err)
+		respondWithError(w, http.StatusUnauthorized, "no authorized to update video: %w", err)
 		return
 	}
 
 	videoFile, videoHeader, err := r.FormFile("video")
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "could not load file", err)
+		respondWithError(w, http.StatusInternalServerError, "could not load file: %w", err)
 		return
 	}
 	defer videoFile.Close()
 
 	videoType, fileExt, err := validateFileType(videoHeader, "video/mp4")
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "unsupported file type", err)
+		respondWithError(w, http.StatusBadRequest, "unsupported file type: %w", err)
 		return
 	}
 
 	osFile, err := os.CreateTemp("", "tubely-upload.mp4")
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "could not create temporary file", err)
+		respondWithError(w, http.StatusInternalServerError, "could not create temporary file: %w", err)
 		return
 	}
 	defer os.Remove(osFile.Name())
@@ -70,43 +70,61 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	_, err = io.Copy(osFile, videoFile)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "could not copy file", err)
+		respondWithError(w, http.StatusInternalServerError, "could not copy file: %w", err)
 		return
 	}
 
 	_, err = osFile.Seek(0, io.SeekStart)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "could not reset file", err)
+		respondWithError(w, http.StatusInternalServerError, "could not reset file: %w", err)
 		return
 	}
 
 	fileName, err := randomFilename()
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "could not generate file name", err)
+		respondWithError(w, http.StatusInternalServerError, "could not generate file name %w", err)
 		return
 	}
 	fileName += fileExt
+
+	videoAspectRatio, err := getVideoAspectRatio(osFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "could not get video aspect ratio %w", err)
+		return
+	}
+
+	var videoFrame string
+	switch videoAspectRatio {
+	case "16:9":
+		videoFrame = "landscape"
+	case "9:16":
+		videoFrame = "portrait"
+	default:
+		videoFrame = "other"
+	}
+
+	fileKey := fmt.Sprintf("%s/%s", videoFrame, fileName)
 
 	_, err = cfg.s3Client.PutObject(
 		r.Context(),
 		&s3.PutObjectInput{
 			Bucket:      &cfg.s3Bucket,
-			Key:         &fileName,
+			Key:         &fileKey,
 			Body:        osFile,
 			ContentType: &videoType,
 		},
 	)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "could not upload file", err)
+		respondWithError(w, http.StatusInternalServerError, "could not upload file: %w", err)
 		return
 	}
 
-	url := cfg.getAssetAWSURL(fileName)
+	url := cfg.getAssetAWSURL(fileKey)
 	dbVideo.VideoURL = &url
 
 	err = cfg.db.UpdateVideo(dbVideo)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "could not update video", err)
+		respondWithError(w, http.StatusInternalServerError, "could not update video :%w", err)
 		return
 	}
 
