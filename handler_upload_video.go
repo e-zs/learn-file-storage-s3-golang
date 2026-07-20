@@ -33,7 +33,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	videoIDString := r.PathValue("videoID")
 	videoID, err := uuid.Parse(videoIDString)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid IDL", err)
+		respondWithError(w, http.StatusBadRequest, "Invalid ID", err)
 		return
 	}
 
@@ -43,7 +43,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if dbVideo.UserID != userID {
-		respondWithError(w, http.StatusUnauthorized, "no authorized to update video", err)
+		respondWithError(w, http.StatusUnauthorized, "not authorized to update video", err)
 		return
 	}
 
